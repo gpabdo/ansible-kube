@@ -1,0 +1,101 @@
+##----  nodes ---------------------------------------##
+##
+##---------------------------------------------------##
+- name: Deploy kube 
+  hosts: kube
+
+  become: true
+  become_method: sudo
+  become_user: root
+
+  tasks:
+    - name: Add br_netfilter
+      community.general.modprobe:
+        name: br_netfilter
+        state: present
+
+    - name: Create and configure modules-load.d/k8s.conf
+      ansible.builtin.lineinfile:
+        path: /etc/modules-load.d/k8s.conf
+        line: "br_netfilter"
+        create: yes
+
+    - ansible.posix.sysctl:
+        name: net.bridge.bridge-nf-call-ip6tables
+        value: 1
+        sysctl_set: yes
+
+    - ansible.posix.sysctl:
+        name: net.bridge.bridge-nf-call-iptables
+        value: 1
+        sysctl_set: yes
+
+    - name: Disable swap for current session
+      command: swapoff -a
+
+    - name: Disable swap permanently, persist reboots
+      replace:
+        path: /etc/fstab
+        regexp: '^(\s*)([^#\n]+\s+)(\w+\s+)swap(\s+.*)$'
+        replace: '#\1\2\3swap\4'
+        backup: yes
+
+    - name: Install dependencies
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - apt-transport-https 
+        - ca-certificates 
+        - curl
+        - gnupg
+        - lsb-release
+        - net-tools
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+
+    - name: Add Docker APT repository
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/{{ ansible_system | lower }}/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} stable
+
+    - name: Install docker 
+      apt:
+        update_cache: yes
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+
+    - name: Add Kube GPG key
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+
+    - name: Add kube APT repository
+      apt_repository:
+        repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+
+    - name: Install Kube 
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - kubelet=1.20.9-00
+        - kubeadm=1.20.9-00
+        - kubectl
+
+    - name: Prevent kube from being upgraded
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      with_items:
+        - kubelet
+        - kubeadm
+        - kubectl
