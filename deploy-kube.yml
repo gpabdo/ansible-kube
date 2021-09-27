@@ -2,7 +2,8 @@
 ##
 ##---------------------------------------------------##
 - name: Deploy kube 
-  hosts: kube
+  hosts: localhost
+  connection: local
 
   become: true
   become_method: sudo
@@ -10,22 +11,22 @@
 
   tasks:
     - name: Add br_netfilter
-      community.general.modprobe:
+      modprobe:
         name: br_netfilter
         state: present
 
     - name: Create and configure modules-load.d/k8s.conf
-      ansible.builtin.lineinfile:
+      lineinfile:
         path: /etc/modules-load.d/k8s.conf
         line: "br_netfilter"
         create: yes
 
-    - ansible.posix.sysctl:
+    - sysctl:
         name: net.bridge.bridge-nf-call-ip6tables
         value: 1
         sysctl_set: yes
 
-    - ansible.posix.sysctl:
+    - sysctl:
         name: net.bridge.bridge-nf-call-iptables
         value: 1
         sysctl_set: yes
@@ -71,6 +72,12 @@
         - docker-ce
         - docker-ce-cli
         - containerd.io
+
+    - name: adding existing user to docker group 
+      user:
+        name: "{{ ansible_user_id }}"
+        groups: docker
+        append: yes
 
     - name: Add Kube GPG key
       apt_key:
